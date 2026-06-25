@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -94,10 +95,7 @@ NOMBRES_VARIABLES_ES = {
 # CARGA DE DATOS Y ENTRENAMIENTO DEL AGENTE 
 @st.cache_resource
 def entrenar_agente():
-    """
-    Entrena el agente inteligente (Random Forest Regressor) que actúa como
-    motor de predicción del GPA estudiantil.
-    """
+   
     df = pd.read_csv("Student_performance_data.csv")
 
     # Se elimina la columna "StudentID" y "GradeClass" del conjunto de datos,
@@ -134,7 +132,7 @@ with col_logo:
     st.markdown("## 🎓")
 with col_titulo:
     st.markdown('<p class="main-header">Agente Inteligente — Predictor de Rendimiento Académico (GPA)</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Trabajo Final · Curso Agentes Inteligentes · USIL 2026-1</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Trabajo Final · Agentes Inteligentes · 2026-1</p>', unsafe_allow_html=True)
 
 st.markdown(
     """
@@ -263,6 +261,117 @@ with tab_prediccion:
                 palanca más efectiva para mejorar el rendimiento académico estimado.
                 """
             )
+        
+        st.divider()
+ 
+        # Simulador de sensibilidad ante cambios en las ausencias 
+        st.subheader("🔬 Simulador: ¿Qué pasaría si cambiaran las ausencias?")
+        st.caption(
+            "El agente vuelve a predecir el GPA manteniendo todas las demás características "
+            "fijas, variando únicamente el número de ausencias de 0 a 29."
+        )
+ 
+        rango_ausencias = list(range(0, 30))
+        gpa_simulado = []
+        for a in rango_ausencias:
+            fila_simulada = entrada.copy()
+            fila_simulada["Absences"] = a
+            pred_simulada = float(modelo_rf.predict(fila_simulada)[0])
+            pred_simulada = max(0.0, min(4.0, pred_simulada))
+            gpa_simulado.append(pred_simulada)
+ 
+        fig_sensibilidad = go.Figure()
+        fig_sensibilidad.add_trace(go.Scatter(
+            x=rango_ausencias,
+            y=gpa_simulado,
+            mode="lines",
+            name="GPA estimado",
+            line=dict(color="#2563EB", width=3),
+        ))
+        fig_sensibilidad.add_trace(go.Scatter(
+            x=[ausencias],
+            y=[gpa_predicho],
+            mode="markers",
+            name="Estudiante actual",
+            marker=dict(color="#DC2626", size=14, symbol="star"),
+        ))
+        fig_sensibilidad.update_layout(
+            title="Sensibilidad del GPA estimado ante cambios en las ausencias",
+            xaxis_title="Número de ausencias",
+            yaxis_title="GPA estimado",
+            yaxis_range=[0, 4],
+            showlegend=True,
+        )
+        st.plotly_chart(fig_sensibilidad, use_container_width=True)
+ 
+        st.caption(
+            f"💡 Con las características actuales, si el número de ausencias bajara a 0, el GPA "
+            f"estimado subiría a **{gpa_simulado[0]:.2f}**; si subiera al máximo (29), bajaría a "
+            f"**{gpa_simulado[-1]:.2f}**. Esto confirma que las ausencias son, por amplio margen, "
+            f"la variable más influyente en la predicción del agente."
+        )
+ 
+        st.divider()
+ 
+        # Comparación contra el promedio del dataset 
+        st.subheader("📐 ¿Cómo se compara este estudiante contra el promedio?")
+        st.caption(
+            "Comparación del perfil ingresado frente al promedio de los 2,392 estudiantes del dataset."
+        )
+ 
+        promedio_ausencias = df_original["Absences"].mean()
+        promedio_estudio = df_original["StudyTimeWeekly"].mean()
+        promedio_apoyo = df_original["ParentalSupport"].mean()
+ 
+        categorias = ["Ausencias", "Horas de estudio\nsemanales", "Apoyo parental\n(0 a 4)"]
+        valores_estudiante = [ausencias, horas_estudio, inv_apoyo[apoyo_parental_es]]
+        valores_promedio = [promedio_ausencias, promedio_estudio, promedio_apoyo]
+ 
+        fig_comparacion = go.Figure()
+        fig_comparacion.add_trace(go.Bar(
+            x=categorias,
+            y=valores_estudiante,
+            name="Este estudiante",
+            marker_color="#2563EB",
+            text=[f"{v:.1f}" for v in valores_estudiante],
+            textposition="outside",
+        ))
+        fig_comparacion.add_trace(go.Bar(
+            x=categorias,
+            y=valores_promedio,
+            name="Promedio del dataset",
+            marker_color="#94A3B8",
+            text=[f"{v:.1f}" for v in valores_promedio],
+            textposition="outside",
+        ))
+        fig_comparacion.update_layout(
+            title="Estudiante actual vs. promedio del dataset",
+            yaxis_title="Valor",
+            barmode="group",
+        )
+        st.plotly_chart(fig_comparacion, use_container_width=True)
+ 
+        # Mensaje interpretativo  sobre ausencias (variable más influyente)
+        diferencia_pct = ((ausencias - promedio_ausencias) / promedio_ausencias) * 100 if promedio_ausencias > 0 else 0
+        if diferencia_pct > 10:
+            st.warning(
+                f"📌 Las ausencias de este estudiante están **{diferencia_pct:.0f}% por encima** "
+                f"del promedio del dataset ({promedio_ausencias:.1f} ausencias en promedio), lo cual "
+                f"impacta negativamente en el GPA estimado."
+            )
+        elif diferencia_pct < -10:
+            st.success(
+                f"📌 Las ausencias de este estudiante están **{abs(diferencia_pct):.0f}% por debajo** "
+                f"del promedio del dataset ({promedio_ausencias:.1f} ausencias en promedio), lo cual "
+                f"favorece positivamente el GPA estimado."
+            )
+        else:
+            st.info(
+                f"📌 Las ausencias de este estudiante están cercanas al promedio del dataset "
+                f"({promedio_ausencias:.1f} ausencias en promedio)."
+            )
+ 
+        st.divider()
 
         st.markdown(
             """
@@ -358,5 +467,5 @@ with tab_datos:
 
 st.divider()
 st.caption(
-    "Agente Inteligente — Predicción de GPA | Trabajo Final | Curso Agentes Inteligentes | USIL 2026-1"
+    "Agente Inteligente — Predicción de GPA | Trabajo Final | 2026-1"
 )
